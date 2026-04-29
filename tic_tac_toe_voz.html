@@ -1,0 +1,242 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Space Mono', monospace; }
+  #app { padding: 1.5rem; max-width: 480px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 700; color: var(--color-text-primary); letter-spacing: -0.5px; margin-bottom: 4px; }
+  #status { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 1.25rem; min-height: 20px; }
+  #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 1.25rem; }
+  .cell {
+    aspect-ratio: 1;
+    background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-secondary);
+    border-radius: var(--border-radius-lg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px; font-weight: 700; cursor: pointer;
+    transition: background 0.15s;
+    color: var(--color-text-primary);
+    user-select: none;
+  }
+  .cell:hover:not(.taken) { background: var(--color-background-primary); }
+  .cell.taken { cursor: default; }
+  .cell.x { color: #378ADD; }
+  .cell.o { color: #D85A30; }
+  .cell.win { background: var(--color-background-info); }
+  #controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  #mic-btn {
+    flex: 1; padding: 10px 16px; border-radius: var(--border-radius-md);
+    border: 0.5px solid var(--color-border-secondary);
+    background: var(--color-background-secondary);
+    color: var(--color-text-primary); font-family: inherit; font-size: 13px;
+    cursor: pointer; display: flex; align-items: center; gap: 8px; justify-content: center;
+    transition: background 0.15s;
+  }
+  #mic-btn:hover { background: var(--color-background-primary); }
+  #mic-btn.listening { background: var(--color-background-danger); color: var(--color-text-danger); border-color: var(--color-border-danger); }
+  #reset-btn {
+    padding: 10px 16px; border-radius: var(--border-radius-md);
+    border: 0.5px solid var(--color-border-tertiary);
+    background: transparent; color: var(--color-text-secondary);
+    font-family: inherit; font-size: 13px; cursor: pointer;
+    transition: background 0.15s;
+  }
+  #reset-btn:hover { background: var(--color-background-secondary); }
+  #voice-hint {
+    margin-top: 1rem; padding: 10px 14px;
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-md);
+    border: 0.5px solid var(--color-border-tertiary);
+    font-size: 12px; color: var(--color-text-secondary); line-height: 1.6;
+  }
+  #voice-hint b { color: var(--color-text-primary); font-weight: 700; }
+  #transcript { font-size: 12px; color: var(--color-text-tertiary); margin-top: 8px; min-height: 16px; font-style: italic; }
+  #scores { display: flex; gap: 8px; margin-bottom: 1rem; }
+  .score-card {
+    flex: 1; background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md); padding: 8px 12px; text-align: center;
+  }
+  .score-label { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 2px; }
+  .score-num { font-size: 20px; font-weight: 700; color: var(--color-text-primary); }
+  .score-card.x-card .score-num { color: #378ADD; }
+  .score-card.o-card .score-num { color: #D85A30; }
+</style>
+
+<div id="app">
+  <h2 class="sr-only">Juego de Tic Tac Toe con control por voz</h2>
+  <h1>TIC TAC TOE</h1>
+  <div id="status">Turno de X</div>
+
+  <div id="scores">
+    <div class="score-card x-card"><div class="score-label">X</div><div class="score-num" id="score-x">0</div></div>
+    <div class="score-card"><div class="score-label">Empates</div><div class="score-num" id="score-d">0</div></div>
+    <div class="score-card o-card"><div class="score-label">O</div><div class="score-num" id="score-o">0</div></div>
+  </div>
+
+  <div id="board">
+    <div class="cell" data-i="0" onclick="play(0)"></div>
+    <div class="cell" data-i="1" onclick="play(1)"></div>
+    <div class="cell" data-i="2" onclick="play(2)"></div>
+    <div class="cell" data-i="3" onclick="play(3)"></div>
+    <div class="cell" data-i="4" onclick="play(4)"></div>
+    <div class="cell" data-i="5" onclick="play(5)"></div>
+    <div class="cell" data-i="6" onclick="play(6)"></div>
+    <div class="cell" data-i="7" onclick="play(7)"></div>
+    <div class="cell" data-i="8" onclick="play(8)"></div>
+  </div>
+
+  <div id="controls">
+    <button id="mic-btn" onclick="toggleMic()">🎤 Hablar</button>
+    <button id="reset-btn" onclick="reset()">Reiniciar</button>
+  </div>
+
+  <div id="transcript"></div>
+
+  <div id="voice-hint">
+    Di el número de la celda (1–9) o su posicion:<br>
+    <b>1</b>=sup. izq · <b>2</b>=sup. centro · <b>3</b>=sup. der<br>
+    <b>4</b>=med. izq · <b>5</b>=centro · <b>6</b>=med. der<br>
+    <b>7</b>=inf. izq · <b>8</b>=inf. centro · <b>9</b>=inf. der<br>
+  </div>
+</div>
+
+<script>
+let board = Array(9).fill(null);
+let current = 'X';
+let over = false;
+let recognition = null;
+let listening = false;
+let scores = { X: 0, O: 0, D: 0 };
+
+const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+function checkWin(b, p) {
+  return wins.find(w => w.every(i => b[i] === p)) || null;
+}
+
+function play(i) {
+  if (over || board[i]) return;
+  board[i] = current;
+  render();
+  const winLine = checkWin(board, current);
+  if (winLine) {
+    winLine.forEach(idx => cells()[idx].classList.add('win'));
+    setStatus(`${current} gana `);
+    scores[current]++;
+    updateScores();
+    over = true;
+    speak(`${current} gana`);
+    return;
+  }
+  if (board.every(Boolean)) {
+    setStatus('Empate');
+    scores.D++;
+    updateScores();
+    over = true;
+    speak('Empate');
+    return;
+  }
+  current = current === 'X' ? 'O' : 'X';
+  setStatus(`Turno de ${current}`);
+}
+
+function cells() { return document.querySelectorAll('.cell'); }
+
+function render() {
+  cells().forEach((c, i) => {
+    c.textContent = board[i] || '';
+    c.className = 'cell' + (board[i] ? ' taken ' + board[i].toLowerCase() : '');
+  });
+}
+
+function setStatus(t) { document.getElementById('status').textContent = t; }
+function updateScores() {
+  document.getElementById('score-x').textContent = scores.X;
+  document.getElementById('score-o').textContent = scores.O;
+  document.getElementById('score-d').textContent = scores.D;
+}
+
+function reset() {
+  board = Array(9).fill(null);
+  current = 'X'; over = false;
+  render();
+  setStatus('Turno de X');
+  document.getElementById('transcript').textContent = '';
+}
+
+function speak(text) {
+  if (!window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'es-MX'; u.rate = 1; u.pitch = 1;
+  speechSynthesis.speak(u);
+}
+
+const posMap = {
+  'uno':1,'one':1,'1':1,'arriba izquierda':1,'superior izquierda':1,
+  'dos':2,'two':2,'2':2,'arriba centro':2,'superior centro':2,'arriba':2,
+  'tres':3,'three':3,'3':3,'arriba derecha':3,'superior derecha':3,
+  'cuatro':4,'four':4,'4':4,'medio izquierda':4,'izquierda':4,'media izquierda':4,
+  'cinco':5,'five':5,'5':5,'centro':5,'en el centro':5,'al centro':5,
+  'seis':6,'six':6,'6':6,'medio derecha':6,'derecha':6,'media derecha':6,
+  'siete':7,'seven':7,'7':7,'abajo izquierda':7,'inferior izquierda':7,
+  'ocho':8,'eight':8,'8':8,'abajo centro':8,'inferior centro':8,'abajo':8,
+  'nueve':9,'nine':9,'9':9,'abajo derecha':9,'inferior derecha':9,
+};
+
+function parseVoice(t) {
+  t = t.toLowerCase().trim();
+  if (posMap[t] !== undefined) return posMap[t] - 1;
+  for (const [k, v] of Object.entries(posMap)) {
+    if (t.includes(k)) return v - 1;
+  }
+  const m = t.match(/\b([1-9])\b/);
+  if (m) return parseInt(m[1]) - 1;
+  return null;
+}
+
+function toggleMic() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    setStatus('Tu navegador no soporta reconocimiento de voz. Usa Chrome.');
+    return;
+  }
+  if (listening) { recognition && recognition.stop(); return; }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'es-MX';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 3;
+
+  recognition.onstart = () => {
+    listening = true;
+    document.getElementById('mic-btn').className = 'listening';
+    document.getElementById('mic-btn').textContent = '🔴 Escuchando...';
+  };
+
+  recognition.onresult = (e) => {
+    const results = Array.from(e.results[0]).map(r => r.transcript);
+    document.getElementById('transcript').textContent = '→ "' + results[0] + '"';
+    let idx = null;
+    for (const r of results) { idx = parseVoice(r); if (idx !== null) break; }
+    if (idx !== null && idx >= 0 && idx < 9) {
+      play(idx);
+    } else {
+      setStatus('No entendí. Di un número del 1 al 9.');
+      speak('No entendí, di un número');
+    }
+  };
+
+  recognition.onerror = (e) => {
+    setStatus('Error de micrófono: ' + e.error);
+  };
+
+  recognition.onend = () => {
+    listening = false;
+    document.getElementById('mic-btn').className = '';
+    document.getElementById('mic-btn').textContent = '🎤 Hablar';
+  };
+
+  recognition.start();
+}
+</script>
